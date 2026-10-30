@@ -13,11 +13,11 @@ npm run dev
 
 Open the local URL printed by Vite. The app fetches market metadata, order book snapshots, trades, and candle history, then subscribes to live public feeds.
 
-The selected market's Yes and No headers show each side's best bid and best offer. The depth panel shows the Yes book, and the trade tape shows recent public trades. The SDK's market metadata supplies the side labels. Underlying charts use the market metadata when available and infer BTC, ETH, or HYPE from the contract name when it is not.
+The screen is a terminal grid. Market watch sits on the left. The center stacks the underlying chart and the YES contract chart on one shared time axis. Depth of market and the order ticket sit on the right. A bottom terminal holds public trades, and empty read-only tabs for positions, open orders, fills, and balances. The order ticket is a calculator: clicking a book level fills the limit, and Review never submits.
 
-Both charts show volume. The underlying chart supports candle intervals down to 15 seconds. Fifteen-second candles are aggregated from recent trades and updated live; their backfill is limited to the recent-trade history returned by Hyperliquid. The outcome chart connects public trade prices as a line, backfills up to 1,000 recent trades on load, and adds new trades live. Its window controls select how much of that trade series is visible.
+Depth follows the side selected on the ticket. Side labels come from the SDK. Underlying charts use market metadata when it is present and infer BTC, ETH, or HYPE from the contract name when it is not. Both charts show volume. The underlying chart supports candle intervals down to 15 seconds. Fifteen-second candles are aggregated from recent trades and updated live; their backfill is limited to the recent-trade history returned by Hyperliquid. The YES chart plots public trade prices from 0 to 1 USDC and backfills up to 1,000 recent trades. Pan and zoom on either chart move both.
 
-The watchlist loads the full market catalog, ordered by 24-hour volume, so search and filters include markets beyond the initial 100 results. It can filter by market type, deployer venue/address, and time to settlement. Each row shows the settlement or event target and remaining time when the SDK metadata provides one.
+The watchlist loads the full market catalog, ordered by 24-hour volume, so search and filters include markets beyond the initial 100 results. It can filter by market type, deployer venue/address, and time to settlement. Each row shows the settlement or event target and remaining time when the SDK metadata provides one. Panel sizes and which panes are open are stored in the browser. Dark is the default. The app follows the system theme until the sun/moon control or View menu switches it, and that choice is stored in the browser.
 
 ## SDK license
 
