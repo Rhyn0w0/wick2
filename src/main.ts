@@ -545,6 +545,22 @@ function formatSettlementTarget(market: HIP4Market): string {
   return `${formatSettlementStamp(market)} · ${relative}`;
 }
 
+function formatSettlementCompact(market: HIP4Market): string {
+  const target = settlementTarget(market);
+  if (!target) return "No settlement time";
+  const date = new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(target.timestamp);
+  const remaining = target.timestamp - Date.now();
+  const relative = remaining <= 0 ? "passed" : formatDuration(remaining);
+  return `${date} UTC · ${relative}`;
+}
+
 function matchesSettlementFilter(market: HIP4Market): boolean {
   if (state.settlementFilter === "all") return true;
   const target = settlementTarget(market);
@@ -701,7 +717,7 @@ function renderMarketRows(): string {
         <button class="market-row ${selected ? "selected" : ""}" data-market-id="${esc(id)}" aria-pressed="${selected}" title="${esc(marketTitle(market))}">
           <span class="market-row-title">${esc(marketTitle(market))}</span>
           <span class="market-row-price mono" data-market-price="${esc(id)}">${esc(marketSummary(market))}</span>
-          <span class="market-row-meta">${esc(typeLabel(market.type))} · #${esc(id)} · ${esc(formatSettlementTarget(market))}</span>
+          <span class="market-row-meta" title="${esc(`${typeLabel(market.type)} · #${id} · ${formatSettlementTarget(market)}`)}"><span class="meta-when">${esc(formatSettlementCompact(market))}</span><span class="meta-id">${esc(typeLabel(market.type))} · #${esc(id)}</span></span>
         </button>`;
     })
     .join("");
@@ -715,7 +731,7 @@ function renderMarketWatch(): string {
       <div class="panel-heading"><span>Market watch</span><span class="panel-count" id="watch-count">${visibleCount} / ${state.markets.length}</span></div>
       <div class="watch-controls">
         <label class="sr-only" for="market-search">Search markets</label>
-        <input id="market-search" type="search" placeholder="Search markets or deployers" value="${esc(state.search)}" autocomplete="off" />
+        <div class="search-wrap">${icon("search")}<input id="market-search" type="search" placeholder="Search markets or deployers" value="${esc(state.search)}" autocomplete="off" /></div>
         <label class="sr-only" for="market-type">Market type</label>
         <select id="market-type" aria-label="Filter market type">
           ${marketKinds
@@ -1240,6 +1256,10 @@ function runCommand(command: string, source: HTMLElement): void {
     case "close-overlay":
       closeOverlay();
       break;
+    case "toggle-theme":
+      setTheme(currentTheme() === "dark" ? "light" : "dark");
+      renderApp();
+      break;
     default:
       break;
   }
@@ -1277,12 +1297,62 @@ function renderMenu(): string {
   const pane = (name: PaneName, label: string) => `<button type="button" role="menuitemcheckbox" data-command="toggle-pane" data-pane="${name}" aria-checked="${state.panes[name]}"><span class="check">${state.panes[name] ? "✓" : ""}</span><span>${label}</span></button>`;
   return `<nav class="menubar" aria-label="Application menu">
     <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">File</button><div class="menu-panel" role="menu" hidden>${menuItem("Copy market link", "copy-link")}</div></div>
-    <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">View</button><div class="menu-panel" role="menu" hidden>${menuItem("Focus market search", "focus-search", "", "/")}${menuItem("Reset chart view", "reset-chart")}</div></div>
+    <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">View</button><div class="menu-panel" role="menu" hidden>${menuItem("Focus market search", "focus-search", "", "/")}${menuItem("Reset chart view", "reset-chart")}${menuItem(currentTheme() === "dark" ? "Use light theme" : "Use dark theme", "toggle-theme")}</div></div>
     <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">Charts</button><div class="menu-panel" role="menu" hidden>${intervalItems}</div></div>
     <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">Trade</button><div class="menu-panel" role="menu" hidden>${menuItem("Review order preview", "review")}<button type="button" role="menuitem" disabled><span class="check"></span><span>Submit order</span><span class="menu-k">Read-only</span></button></div></div>
     <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">Window</button><div class="menu-panel" role="menu" hidden>${pane("watch", "Market watch")}${pane("dock", "Depth and ticket")}${pane("terminal", "Bottom terminal")}<div class="menu-rule"></div>${menuItem("Reset panel sizes", "reset-layout")}</div></div>
     <div class="menu"><button type="button" class="menu-button" aria-expanded="false" aria-haspopup="true">Help</button><div class="menu-panel" role="menu" hidden>${menuItem("About this terminal", "about")}${menuItem("Focus order ticket", "focus-ticket")}</div></div>
   </nav>`;
+}
+
+function icon(name: "sun" | "moon" | "search"): string {
+  const paths = {
+    sun: `<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>`,
+    moon: `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"/>`,
+    search: `<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>`,
+  };
+  return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
+}
+
+const THEME_KEY = "outcome-desk-theme";
+type ThemeName = "dark" | "light";
+
+function systemTheme(): ThemeName {
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+function storedTheme(): ThemeName | null {
+  try {
+    const value = localStorage.getItem(THEME_KEY);
+    return value === "light" || value === "dark" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentTheme(): ThemeName {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme: ThemeName): void {
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#fafafa" : "#000000");
+}
+
+function setTheme(theme: ThemeName): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // The choice still applies for this session.
+  }
+  applyTheme(theme);
+}
+
+function initTheme(): void {
+  applyTheme(storedTheme() ?? systemTheme());
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (!storedTheme()) applyTheme(systemTheme());
+  });
 }
 
 function connectionChip(): string {
@@ -1293,15 +1363,17 @@ function connectionChip(): string {
 
 function renderTopbar(): string {
   const market = currentMarket();
+  const theme = currentTheme();
+  const nextTheme = theme === "dark" ? "light" : "dark";
   return `<header class="topbar">
-    <div class="brand"><span class="brand-mark">OD</span><span>OUTCOME DESK</span></div>
+    <div class="brand"><span>Outcome Desk</span></div>
     <span class="top-divider" aria-hidden="true"></span>
     <label class="toolbar-label" for="selected-market">Market</label>
     <select id="selected-market" aria-label="Selected market" ${state.markets.length === 0 ? "disabled" : ""}>
       ${state.markets.map((entry) => `<option value="${esc(marketId(entry))}" ${market && marketId(entry) === marketId(market) ? "selected" : ""}>${esc(marketTitle(entry))}</option>`).join("")}
     </select>
     <div class="top-intervals" aria-label="Shared chart timeframe">${renderIntervals()}</div>
-    <div class="top-actions">${connectionChip()}<span class="account-chip">Read-only · no wallet</span></div>
+    <div class="top-actions">${connectionChip()}<span class="account-chip">Read-only · no wallet</span><button type="button" class="icon-button theme-toggle" id="theme-toggle" data-command="toggle-theme" aria-label="Switch to ${nextTheme} theme" aria-pressed="${theme === "light"}">${icon(theme === "dark" ? "sun" : "moon")}<span class="theme-name">Theme</span></button></div>
   </header>`;
 }
 
@@ -1405,7 +1477,7 @@ function niceStep(span: number): number {
   return nice * power;
 }
 
-function priceGrid(plot: Plot, minimum: number, maximum: number, format: (value: number) => string): string {
+function priceGrid(plot: Plot, minimum: number, maximum: number, format: (value: number) => string, avoidY?: number): string {
   const span = maximum - minimum || 1;
   const step = niceStep(span);
   const start = Math.ceil((minimum + span * 0.02) / step) * step;
@@ -1414,7 +1486,10 @@ function priceGrid(plot: Plot, minimum: number, maximum: number, format: (value:
   if (values.length === 0) values.push((minimum + maximum) / 2);
   return values.map((value) => {
     const y = plot.top + ((maximum - value) / span) * plot.plotHeight;
-    return `<g><line class="chart-gridline" x1="${plot.left}" y1="${y}" x2="${plot.width - plot.right}" y2="${y}"/><text class="chart-axis-label" x="${plot.width - 4}" y="${y + 3}" text-anchor="end">${esc(format(value))}</text></g>`;
+    const label = avoidY !== undefined && Math.abs(y - avoidY) < 16
+      ? ""
+      : `<text class="chart-axis-label" x="${plot.width - 4}" y="${y + 3}" text-anchor="end">${esc(format(value))}</text>`;
+    return `<g><line class="chart-gridline" x1="${plot.left}" y1="${y}" x2="${plot.width - plot.right}" y2="${y}"/>${label}</g>`;
   }).join("");
 }
 
@@ -1489,7 +1564,16 @@ function underlyingReadout(candle: Candle | null): string {
   const market = currentMarket();
   const unit = market ? marketUnderlying(market) ?? "units" : "units";
   if (!candle) return "No candles in this window";
-  return `O <b class="mono">${esc(formatUnderlying(candle.open))}</b> H <b class="mono">${esc(formatUnderlying(candle.high))}</b> L <b class="mono">${esc(formatUnderlying(candle.low))}</b> C <b class="mono">${esc(formatUnderlying(candle.close))}</b> Vol <b class="mono">${esc(formatVolume(candle.volume, unit))}</b> <span><i class="swatch fast"></i>MA9</span> <span><i class="swatch slow"></i>MA21</span>`;
+  const parts = [
+    `O <b class="mono">${esc(formatUnderlying(candle.open))}</b>`,
+    `H <b class="mono">${esc(formatUnderlying(candle.high))}</b>`,
+    `L <b class="mono">${esc(formatUnderlying(candle.low))}</b>`,
+    `C <b class="mono">${esc(formatUnderlying(candle.close))}</b>`,
+    `Vol <b class="mono">${esc(formatVolume(candle.volume, unit))}</b>`,
+    `<i class="swatch fast"></i>MA9`,
+    `<i class="swatch slow"></i>MA21`,
+  ];
+  return parts.map((part) => `<span class="stat">${part}</span>`).join("");
 }
 
 function contractReadout(trade: Trade | null): string {
@@ -1498,7 +1582,13 @@ function contractReadout(trade: Trade | null): string {
   const spread = bookSpread();
   const side = market ? sideName(market, state.bookSide) : "Side";
   const last = trade ? formatContractPrice(trade.price) : "—";
-  return `${esc(side)} last <b class="mono">${esc(last)}</b> Bid <b class="mono positive">${esc(quotes.bid)}</b> Ask <b class="mono negative">${esc(quotes.offer)}</b> Spread <b class="mono">${esc(spread.text)}</b>`;
+  const parts = [
+    `${esc(side)} last <b class="mono">${esc(last)}</b>`,
+    `Bid <b class="mono positive">${esc(quotes.bid)}</b>`,
+    `Ask <b class="mono negative">${esc(quotes.offer)}</b>`,
+    `Spread <b class="mono">${esc(spread.text)}</b>`,
+  ];
+  return parts.map((part) => `<span class="stat">${part}</span>`).join("");
 }
 
 function paintReadouts(override?: { candle?: Candle | null; trade?: Trade | null }): void {
@@ -1607,13 +1697,14 @@ function candleChart(candles: Candle[], livePrice: number | null, strikeLines: M
   const strikes = strikeLines.map((strike, index) => {
     const lineY = y(strike.price);
     const labelY = Math.min(plot.plotBottom - 2, Math.max(plot.top + 10, lineY - 4 - index * 11));
-    return `<g class="strike-marker"><line class="strike-price-line" x1="${plot.left}" y1="${lineY}" x2="${plot.width - plot.right}" y2="${lineY}"/><text class="strike-price-label" x="${plot.width - plot.right - 4}" y="${labelY}" text-anchor="end">${esc(`${strike.label} ${formatUnderlying(strike.price)}`)}</text></g>`;
+    return `<g class="strike-marker"><line class="strike-price-line" x1="${plot.left}" y1="${lineY}" x2="${plot.width - plot.right}" y2="${lineY}"/><text class="strike-price-label" x="${plot.left + 4}" y="${labelY}" text-anchor="start">${esc(`${strike.label} ${formatUnderlying(strike.price)}`)}</text></g>`;
   }).join("");
   const last = visible.at(-1);
   const markerPrice = livePrice !== null && Number.isFinite(livePrice) ? livePrice : last?.close ?? maximum;
   const up = last ? markerPrice >= last.open : true;
+  const markerY = y(markerPrice);
   const volumeLabel = `<g><line class="volume-divider" x1="${plot.left}" y1="${plot.volumeTop - 3}" x2="${plot.width - plot.right}" y2="${plot.volumeTop - 3}"/><text class="volume-axis-label" x="${plot.left + 2}" y="${plot.volumeTop + 9}">VOL</text></g>`;
-  const body = `${priceGrid(plot, minimum, maximum, (value) => formatAxisPrice(value, "underlying"))}${timeGrid(plot, view)}${volumeLabel}${volumeBars}${averages}${bars}${strikes}${lastTag(plot, y(markerPrice), formatAxisPrice(markerPrice, "underlying"), up)}`;
+  const body = `${priceGrid(plot, minimum, maximum, (value) => formatAxisPrice(value, "underlying"), markerY)}${timeGrid(plot, view)}${volumeLabel}${volumeBars}${averages}${bars}${strikes}${lastTag(plot, markerY, formatAxisPrice(markerPrice, "underlying"), up)}`;
   const strikeDescription = strikeLines.length > 0 ? `. ${strikeLines.map((strike) => `${strike.label} ${formatUnderlying(strike.price)}`).join(", ")}` : "";
   return svgShell("underlying", plot, view, minimum, maximum, `Underlying candlestick chart with volume${strikeDescription}`, body);
 }
@@ -1674,7 +1765,8 @@ function outcomeLineChart(): string {
   }).join("");
   const volumeLabel = `<g><line class="volume-divider" x1="${plot.left}" y1="${plot.volumeTop - 3}" x2="${plot.width - plot.right}" y2="${plot.volumeTop - 3}"/><text class="volume-axis-label" x="${plot.left + 2}" y="${plot.volumeTop + 9}">VOL</text></g>`;
   const up = Number(last.price) >= Number(visible[0].price);
-  const body = `${priceGrid(plot, minimum, maximum, (value) => formatAxisPrice(value, "contract"))}${timeGrid(plot, view)}${volumeLabel}${volumeBars}<path class="trade-line" d="${line}"/>${extend}${dots}${lastTag(plot, y(Number(last.price)), formatContractPrice(last.price), up)}`;
+  const markerY = y(Number(last.price));
+  const body = `${priceGrid(plot, minimum, maximum, (value) => formatAxisPrice(value, "contract"), markerY)}${timeGrid(plot, view)}${volumeLabel}${volumeBars}<path class="trade-line" d="${line}"/>${extend}${dots}${lastTag(plot, markerY, formatContractPrice(last.price), up)}`;
   return svgShell("contract", plot, view, minimum, maximum, "YES contract trade prices on a 0 to 1 USDC scale, time axis synced with the underlying chart", body);
 }
 
@@ -1689,10 +1781,15 @@ function renderChartPanel(title: string, outcomeId: string | null, candles: Cand
     ? `<strong class="chart-live-price mono">${esc(contractPrice === null ? "—" : formatContractPrice(contractPrice))}<small>${esc(formatProbability(contractPrice))}</small></strong>`
     : `<strong class="chart-live-price mono">${esc(formatUnderlying(livePrice))}<small>Last</small></strong>`;
   const subtitle = kind === "contract"
-    ? `${market ? sideName(market, 0) : "Yes"} · public trades · 0–1 USDC · time axis synced`
+    ? `${market ? sideName(market, 0) : "Yes"} trades · 0–1 USDC · synced`
     : underlying
-      ? `${underlying} perp${inferred ? " · inferred from the name" : ""} · ${state.underlyingInterval} · time axis synced`
-      : "No underlying mapped for this market";
+      ? `${underlying} perp${inferred ? " · inferred" : ""} · ${state.underlyingInterval} · synced`
+      : "";
+  const subtitleTitle = kind === "contract"
+    ? "Public trades from 0 to 1 USDC. The time axis is synced with the underlying chart."
+    : underlying
+      ? `${underlying} perpetual${inferred ? ", inferred from the market name" : ""}. ${state.underlyingInterval} candles. Time axis synced with the contract chart.`
+      : "No underlying is mapped, so the candle chart stays hidden.";
   const strikeLines = kind === "underlying" && market ? marketStrikeLines(market) : [];
   const chart = noUnderlying
     ? `<div class="chart-empty">No supported underlying for this market.</div>`
@@ -1713,7 +1810,7 @@ function renderChartPanel(title: string, outcomeId: string | null, candles: Cand
     : kind === "contract" || state.underlyingInterval === "15s" ? "recent trades + live" : "candle history + live";
   return `<section class="panel chart-panel ${kind}-panel${noUnderlying ? " is-empty" : ""}">
     <div class="chart-toolbar">
-      <div class="chart-title-group"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span></div>
+      <div class="chart-title-group"><strong>${esc(title)}</strong>${subtitle ? `<span title="${esc(subtitleTitle)}">${esc(subtitle)}</span>` : ""}</div>
       ${noUnderlying ? "" : `${priceLabel}${renderChartControls(kind)}`}
     </div>
     <div class="chart-surface" data-chart-kind="${kind}" id="${kind}-chart" title="${noUnderlying ? "" : "Scroll to zoom · drag to pan · the other chart follows"}">
@@ -1872,7 +1969,7 @@ function renderStatusline(): string {
     <span class="status-note" id="status-note">${esc(state.statusNote)}</span>
     <span class="spacer"></span>
     <span id="status-age">${esc(formatAge(state.lastUpdateAt))}</span>
-    <span>${esc(market ? marketTitle(market) : "No market")}</span>
+    <span class="status-market">${esc(market ? marketTitle(market) : "No market")}</span>
     <span>Read-only · no wallet</span>
   </footer>`;
 }
@@ -1936,12 +2033,11 @@ function pinBookToSpread(): void {
   });
   requestAnimationFrame(() => {
     document.querySelectorAll<HTMLElement>(".book-levels").forEach((node) => {
-      const row = 18;
-      const fit = Math.floor(node.clientHeight / row) * row;
-      if (fit >= row) {
-        node.style.flex = "0 0 auto";
-        node.style.height = `${fit}px`;
-      }
+      const sample = node.querySelector<HTMLElement>(".book-row");
+      const row = Math.max(1, Math.round(sample?.getBoundingClientRect().height || 20));
+      const fit = Math.max(row, Math.floor(node.clientHeight / row) * row);
+      node.style.flex = "0 0 auto";
+      node.style.height = `${fit}px`;
       if (node.classList.contains("asks")) node.scrollTop = 0;
     });
   });
@@ -2655,4 +2751,5 @@ window.addEventListener("beforeunload", () => {
 
 window.setInterval(refreshMarketTiming, 1000);
 window.setInterval(() => refreshMarketRows(), 30_000);
+initTheme();
 void start();
